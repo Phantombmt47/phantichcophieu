@@ -35,23 +35,23 @@ def load_finance_data(symbol, period='year', lang='vi'):
     try:
         finance = Finance(symbol=symbol, source='TCBS')
 
-        balance_sheet_df = finance.balance_sheet(period=period, lang=lang, dropna=True)
-        income_statement_df = finance.income_statement(period=period, lang=lang, dropna=True)
-        cash_flow_df = finance.cash_flow(period=period, dropna=True)
-        ratios_df = finance.ratio(period=period, lang=lang, dropna=True)
+        # Fetch data. Handle potential errors or empty returns from the API.
+        balance_sheet_df = finance.balance_sheet(period=period, lang=lang, dropna=False) # Keep NA for now
+        income_statement_df = finance.income_statement(period=period, lang=lang, dropna=False) # Keep NA for now
+        cash_flow_df = finance.cash_flow(period=period, dropna=False) # Keep NA for now
+        ratios_df = finance.ratio(period=period, lang=lang, dropna=False) # Keep NA for now
 
 
-        # Ensure all are DataFrames
-        def ensure_df(df):
-            return df if isinstance(df, pd.DataFrame) else pd.DataFrame()
+        # Ensure all are DataFrames and not None. If None, create empty DataFrame.
+        balance_sheet_df = balance_sheet_df if isinstance(balance_sheet_df, pd.DataFrame) else pd.DataFrame()
+        income_statement_df = income_statement_df if isinstance(income_statement_df, pd.DataFrame) else pd.DataFrame()
+        cash_flow_df = cash_flow_df if isinstance(cash_flow_df, pd.DataFrame) else pd.DataFrame()
+        ratios_df = ratios_df if isinstance(ratios_df, pd.DataFrame) else pd.DataFrame()
 
-        balance_sheet_df = ensure_df(balance_sheet_df)
-        income_statement_df = ensure_df(income_statement_df)
-        cash_flow_df = ensure_df(cash_flow_df)
-        ratios_df = ensure_df(ratios_df)
 
         # Sort dataframes by index (period) in ascending order for consistent charting
         # This sorting logic is added here to ensure consistency regardless of data source order
+        # Only sort if the dataframe is not empty
         if not balance_sheet_df.empty:
             balance_sheet_df = balance_sheet_df.sort_index(ascending=True)
         if not income_statement_df.empty:
@@ -117,7 +117,8 @@ def create_grid_charts(revenue_profit_df, cash_flow_df_full, asset_structure_df,
 
     # 2. Cash Flow (Bar Chart - all three types)
     cash_flow_cols = ['from_sale', 'from_invest', 'from_financial']
-    if not cash_flow_df_full.empty and all(col in cash_flow_df_full.columns for col in cash_flow_cols):
+    # Check if cash_flow_df_full is not empty and all required columns exist and have at least one non-NaN value
+    if not cash_flow_df_full.empty and all(col in cash_flow_df_full.columns and not cash_flow_df_full[col].dropna().empty for col in cash_flow_cols):
         fig = go.Figure(data=[
             go.Bar(name='Từ HĐKD', x=cash_flow_df_full.index, y=cash_flow_df_full['from_sale']),
             go.Bar(name='Từ HĐĐT', x=cash_flow_df_full.index, y=cash_flow_df_full['from_invest']),
@@ -139,10 +140,18 @@ def create_grid_charts(revenue_profit_df, cash_flow_df_full, asset_structure_df,
     # 4. Profit Margins (Line Chart)
     if not profit_margins_df.empty:
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=profit_margins_df.index, y=profit_margins_df['gross_profit_margin'], mode='lines+markers', name='Tỷ suất Lợi nhuận Gộp'))
-        fig.add_trace(go.Scatter(x=profit_margins_df.index, y=profit_margins_df['net_profit_margin'], mode='lines+markers', name='Tỷ suất Lợi nhuận Ròng'))
-        fig.update_layout(title='Các Tỷ suất Lợi nhuận (%)')
-        charts['profit_margins_chart'] = fig
+        # Only add traces if the column exists and has non-NaN values
+        if 'gross_profit_margin' in profit_margins_df.columns and not profit_margins_df['gross_profit_margin'].dropna().empty:
+            fig.add_trace(go.Scatter(x=profit_margins_df.index, y=profit_margins_df['gross_profit_margin'], mode='lines+markers', name='Tỷ suất Lợi nhuận Gộp'))
+        if 'net_profit_margin' in profit_margins_df.columns and not profit_margins_df['net_profit_margin'].dropna().empty:
+            fig.add_trace(go.Scatter(x=profit_margins_df.index, y=profit_margins_df['net_profit_margin'], mode='lines+markers', name='Tỷ suất Lợi nhuận Ròng'))
+
+        # Check if any traces were added before assigning to charts
+        if fig.data:
+            fig.update_layout(title='Các Tỷ suất Lợi nhuận (%)')
+            charts['profit_margins_chart'] = fig
+        else:
+             charts['profit_margins_chart'] = None # Set to None if no data to plot
     else:
         charts['profit_margins_chart'] = None
 
@@ -150,11 +159,19 @@ def create_grid_charts(revenue_profit_df, cash_flow_df_full, asset_structure_df,
     # 5. Efficiency: ROA & ROE (Line Chart)
     if not efficiency_df.empty:
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=efficiency_df.index, y=efficiency_df['roa'], mode='lines+markers', name='ROA'))
-        fig.add_trace(go.Scatter(x=efficiency_df.index, y=efficiency_df['roe'], mode='lines+markers', name='ROE'))
-        fig.update_layout(title='Hiệu quả Hoạt động (ROA & ROE - %)')
-        fig.update_layout(yaxis_tickformat=".2%") # Format as percentage
-        charts['efficiency_chart'] = fig
+        # Only add traces if the column exists and has non-NaN values
+        if 'roa' in efficiency_df.columns and not efficiency_df['roa'].dropna().empty:
+            fig.add_trace(go.Scatter(x=efficiency_df.index, y=efficiency_df['roa'], mode='lines+markers', name='ROA'))
+        if 'roe' in efficiency_df.columns and not efficiency_df['roe'].dropna().empty:
+            fig.add_trace(go.Scatter(x=efficiency_df.index, y=efficiency_df['roe'], mode='lines+markers', name='ROE'))
+
+        # Check if any traces were added before assigning to charts
+        if fig.data:
+            fig.update_layout(title='Hiệu quả Hoạt động (ROA & ROE - %)')
+            fig.update_layout(yaxis_tickformat=".2%") # Format as percentage
+            charts['efficiency_chart'] = fig
+        else:
+            charts['efficiency_chart'] = None # Set to None if no data to plot
     else:
         charts['efficiency_chart'] = None
 
@@ -182,35 +199,35 @@ def create_grid_charts(revenue_profit_df, cash_flow_df_full, asset_structure_df,
         charts['liquidity_chart'] = None
 
     # 8. Leverage Ratio (Debt/Equity) (Line Chart)
-    if not leverage_df.empty:
+    if not leverage_df.empty and 'debt_on_equity' in leverage_df.columns and not leverage_df['debt_on_equity'].dropna().empty:
         fig = px.line(leverage_df, x=leverage_df.index, y='debt_on_equity', title='Tỷ lệ Đòn bẩy Tài chính (Nợ/Vốn Chủ sở hữu)')
         charts['leverage_chart'] = fig
     else:
         charts['leverage_chart'] = None
 
     # 9. P/E Ratio (Line Chart)
-    if not pe_ratio_df.empty:
+    if not pe_ratio_df.empty and 'price_to_earning' in pe_ratio_df.columns and not pe_ratio_df['price_to_earning'].dropna().empty:
         fig = px.line(pe_ratio_df, x=pe_ratio_df.index, y='price_to_earning', title='Chỉ số P/E')
         charts['pe_ratio_chart'] = fig
     else:
         charts['pe_ratio_chart'] = None
 
     # 10. P/B Ratio (Line Chart)
-    if not pb_ratio_df.empty:
+    if not pb_ratio_df.empty and 'price_to_book' in pb_ratio_df.columns and not pb_ratio_df['price_to_book'].dropna().empty:
         fig = px.line(pb_ratio_df, x=pb_ratio_df.index, y='price_to_book', title='Chỉ số P/B')
         charts['pb_ratio_chart'] = fig
     else:
         charts['pb_ratio_chart'] = None
 
     # 11. Working Capital Trend (Line Chart)
-    if not working_capital_df.empty:
+    if not working_capital_df.empty and 'working_capital' in working_capital_df.columns and not working_capital_df['working_capital'].dropna().empty:
         fig = px.line(working_capital_df, x=working_capital_df.index, y='working_capital', title='Xu hướng Vốn lưu động (Tỷ đồng)')
         charts['working_capital_chart'] = fig
     else:
         charts['working_capital_chart'] = None
 
     # 12. Free Cash Flow Trend (Line Chart)
-    if not free_cash_flow_df.empty:
+    if not free_cash_flow_df.empty and 'free_cash_flow' in free_cash_flow_df.columns and not free_cash_flow_df['free_cash_flow'].dropna().empty:
         fig = px.line(free_cash_flow_df, x=free_cash_flow_df.index, y='free_cash_flow', title='Xu hướng Dòng tiền tự do (Tỷ đồng)')
         charts['free_cash_flow_chart'] = fig
     else:
@@ -229,12 +246,11 @@ st.title("📊 Dashboard Phân tích Báo cáo Tài chính Cổ phiếu Việt N
 # Sidebar stock selection
 st.sidebar.header("🔍 Lựa chọn Cổ phiếu")
 
-default_symbols = ['FPT', 'HPG', 'SSI', 'TNG', 'VCB']
-selected_symbol = st.sidebar.selectbox(
-    "Chọn Mã Cổ phiếu:",
-    options=default_symbols,
-    index=3 # Select TNG as default
-)
+# Use st.text_input for user to enter any stock symbol
+selected_symbol = st.sidebar.text_input(
+    "Nhập Mã Cổ phiếu:",
+    value='TNG' # Default value
+).upper() # Convert to uppercase to ensure consistency
 
 # Add period selection to the sidebar
 selected_period = st.sidebar.selectbox(
@@ -290,13 +306,18 @@ kpi_formats = {
 
 
 if finance_data_dict and any(not df.empty for df in finance_data_dict.values()):
-    # Identify the latest period
+    # Identify the latest period from all available dataframes
     latest_period = None
-    for df_key in finance_data_dict:
-        if not finance_data_dict[df_key].empty:
-            # Assuming index contains period information and is sortable
-            latest_period = finance_data_dict[df_key].index.max()
-            break # Assuming all dataframes have the same periods or we just need one latest period
+    all_indices = []
+    if not balance_sheet_df.empty: all_indices.extend(balance_sheet_df.index.tolist())
+    if not income_statement_df.empty: all_indices.extend(income_statement_df.index.tolist())
+    if not cash_flow_df.empty: all_indices.extend(cash_flow_df.index.tolist())
+    if not ratios_df.empty: all_indices.extend(ratios_df.index.tolist())
+
+    if all_indices:
+        # Assuming indices are sortable (e.g., years or quarters like "2023Q4")
+        latest_period = sorted(list(set(all_indices)))[-1]
+
 
     st.subheader(f"Các chỉ số chính (KPIs) cho kỳ gần nhất ({latest_period if latest_period else 'N/A'})")
 
@@ -305,8 +326,10 @@ if finance_data_dict and any(not df.empty for df in finance_data_dict.values()):
         kpi_values = {}
         for kpi in kpis:
             value = None
+            # Check income statement first
             if not income_statement_df.empty and kpi in income_statement_df.columns and latest_period in income_statement_df.index:
                 value = income_statement_df.loc[latest_period, kpi]
+            # If not found in income statement, check ratios
             elif not ratios_df.empty and kpi in ratios_df.columns and latest_period in ratios_df.index:
                 value = ratios_df.loc[latest_period, kpi]
             kpi_values[kpi] = value
@@ -317,20 +340,25 @@ if finance_data_dict and any(not df.empty for df in finance_data_dict.values()):
             with cols[i]:
                 label = kpi_labels.get(kpi, kpi)
                 value = kpi_values.get(kpi)
-                if value is not None:
+                if value is not None and pd.notna(value): # Check for None and NaN
                     # Apply specific formatting
                     if kpi in ['roe', 'roa']:
-                        try:
-                            formatted_value = kpi_formats.get(kpi, '{}').format(value if pd.notna(value) else 0)
-                        except (ValueError, TypeError):
-                            formatted_value = "N/A"
+                         formatted_value = kpi_formats.get(kpi, '{}').format(value)
+                    elif kpi in ['revenue', 'post_tax_profit']:
+                         # Handle potential non-numeric data gracefully
+                         try:
+                             formatted_value = kpi_formats.get(kpi, '{}').format(value)
+                         except (ValueError, TypeError):
+                             formatted_value = "N/A"
                     elif pd.notna(value):
-                        formatted_value = kpi_formats.get(kpi, '{}').format(value)
+                         formatted_value = kpi_formats.get(kpi, '{}').format(value)
                     else:
-                        formatted_value = "N/A"
+                         formatted_value = "N/A"
+
                     st.metric(label=label, value=formatted_value)
                 else:
                     st.metric(label=label, value="N/A")
+
 
     else:
         st.info("Không có dữ liệu để hiển thị chỉ số chính.")
@@ -347,71 +375,130 @@ if finance_data_dict and any(not df.empty for df in finance_data_dict.values()):
     asset_structure_df = pd.DataFrame()
     capital_structure_df = pd.DataFrame()
     if latest_period is not None and not balance_sheet_df.empty and latest_period in balance_sheet_df.index:
-        latest_balance_sheet = balance_sheet_df.loc[latest_period]
+        latest_balance_sheet = balance_sheet_df.loc[latest_period] # Corrected typo here
         # Ensure required columns exist and are not NaN before creating the structure
-        if pd.notna(latest_balance_sheet.get('short_asset')) and pd.notna(latest_balance_sheet.get('long_asset')):
+        # Use .get() with a default of NaN to avoid KeyError if column is missing
+        short_asset_val = latest_balance_sheet.get('short_asset', pd.NA)
+        long_asset_val = latest_balance_sheet.get('long_asset', pd.NA)
+        debt_val = latest_balance_sheet.get('debt', pd.NA)
+        equity_val = latest_balance_sheet.get('equity', pd.NA)
+
+
+        if pd.notna(short_asset_val) and pd.notna(long_asset_val):
             asset_data = {'Category': ['Tài sản ngắn hạn', 'Tài sản dài hạn'],
-                          'Value': [latest_balance_sheet['short_asset'], latest_balance_sheet['long_asset']]}
+                          'Value': [short_asset_val, long_asset_val]}
             asset_structure_df = pd.DataFrame(asset_data)
 
 
-        if pd.notna(latest_balance_sheet.get('debt')) and pd.notna(latest_balance_sheet.get('equity')):
+        if pd.notna(debt_val) and pd.notna(equity_val):
              capital_data = {'Category': ['Nợ phải trả', 'Vốn chủ sở hữu'],
-                            'Value': [latest_balance_sheet['debt'], latest_balance_sheet['equity']]}
+                            'Value': [debt_val, equity_val]}
              capital_structure_df = pd.DataFrame(capital_data)
 
 
     # Profit Margins
     profit_margins_df = pd.DataFrame()
     if not income_statement_df.empty:
+        # Ensure required columns exist
         if 'gross_profit' in income_statement_df.columns and 'revenue' in income_statement_df.columns and 'post_tax_profit' in income_statement_df.columns:
             # Avoid division by zero or missing values in revenue
-            income_statement_df_cleaned = income_statement_df.replace([0], pd.NA) # Replace 0 with NA for division
-            if not income_statement_df_cleaned['revenue'].isna().all():
-                 profit_margins_df['gross_profit_margin'] = (income_statement_df_cleaned['gross_profit'] / income_statement_df_cleaned['revenue'])
-                 profit_margins_df['net_profit_margin'] = (income_statement_df_cleaned['post_tax_profit'] / income_statement_df_cleaned['revenue'])
-                 profit_margins_df.index = income_statement_df_cleaned.index.astype(str)
-                 profit_margins_df.replace([float('inf'), -float('inf')], pd.NA, inplace=True) # Replace infinite values
+            # Use .copy() to avoid SettingWithCopyWarning
+            income_statement_df_cleaned = income_statement_df.copy()
+            # Replace 0 or NA in revenue with NA for division, affecting only the revenue column for this calculation
+            income_statement_df_cleaned['revenue'] = income_statement_df_cleaned['revenue'].replace([0], pd.NA)
+
+
+            if not income_statement_df_cleaned['revenue'].isna().all(): # Check if there's at least one non-NA revenue value
+                 # Calculate margins, handling potential NA/infinity results
+                 with pd.option_context('mode.use_inf_as_na', True): # Treat infinity as NA
+                     profit_margins_df['gross_profit_margin'] = (income_statement_df_cleaned['gross_profit'] / income_statement_df_cleaned['revenue'])
+                     profit_margins_df['net_profit_margin'] = (income_statement_df_cleaned['post_tax_profit'] / income_statement_df_cleaned['revenue'])
+
+                 # Ensure index is string type for plotting, only if profit_margins_df is not empty
+                 if not profit_margins_df.empty:
+                     profit_margins_df.index = income_statement_df_cleaned.index.astype(str)
+
+                 # Explicitly replace infinite values with NaN after calculation
+                 profit_margins_df.replace([float('inf'), -float('inf')], pd.NA, inplace=True)
             else:
-                st.warning("Không đủ dữ liệu doanh thu để tính Tỷ suất Lợi nhuận.")
+                # Only show warning if revenue column exists but is all NA/0
+                if 'revenue' in income_statement_df.columns:
+                    st.warning(f"Không đủ dữ liệu doanh thu ({selected_symbol}) để tính Tỷ suất Lợi nhuận.")
+        else:
+             st.warning(f"Thiếu cột cần thiết ({selected_symbol}) để tính Tỷ suất Lợi nhuận.")
 
 
     # Efficiency: ROA & ROE
-    efficiency_df = ratios_df[['roa', 'roe']].copy() if 'roa' in ratios_df.columns and 'roe' in ratios_df.columns else pd.DataFrame()
-    efficiency_df.index = efficiency_df.index.astype(str)
+    efficiency_df = pd.DataFrame()
+    if not ratios_df.empty:
+        # Select columns only if they exist
+        cols_to_select = [col for col in ['roa', 'roe'] if col in ratios_df.columns]
+        if cols_to_select:
+             efficiency_df = ratios_df[cols_to_select].copy()
+             efficiency_df.index = efficiency_df.index.astype(str)
+        else:
+             st.warning(f"Thiếu cột cần thiết ({selected_symbol}) để tính Hiệu quả Hoạt động (ROA & ROE).")
 
 
     # Liquidity: Current & Quick Ratios
     liquidity_df = pd.DataFrame()
     if not balance_sheet_df.empty:
-        # Ensure 'short_debt' is not zero or NaN to avoid division by zero
-        balance_sheet_df_cleaned = balance_sheet_df.replace([0], pd.NA).copy() # Replace 0 with NA for division
-        balance_sheet_df_cleaned.fillna(0, inplace=True) # Fill NA with 0 as requested by the user
+        # Ensure required columns exist before attempting calculations
+        required_cols_current = ['short_asset', 'short_debt']
+        required_cols_quick = ['cash', 'short_invest', 'short_receivable', 'short_debt']
 
-        # Calculate Current Ratio
-        current_ratio_calculated = pd.Series(dtype='float64') # Initialize as empty Series
-        if 'short_asset' in balance_sheet_df_cleaned.columns and 'short_debt' in balance_sheet_df_cleaned.columns and not balance_sheet_df_cleaned['short_debt'].isna().all() and (balance_sheet_df_cleaned['short_debt'] != 0).any(): # Added check for non-zero short_debt
-             current_ratio_calculated = (balance_sheet_df_cleaned['short_asset'] / balance_sheet_df_cleaned['short_debt']).replace([float('inf'), -float('inf')], pd.NA)
+        can_calc_current = all(col in balance_sheet_df.columns for col in required_cols_current)
+        can_calc_quick = all(col in balance_sheet_df.columns for col in required_cols_quick)
+
+        if can_calc_current or can_calc_quick:
+            balance_sheet_df_cleaned = balance_sheet_df.copy()
+             # Replace 0 or NA in 'short_debt' with NA for division, affecting only the 'short_debt' column
+            balance_sheet_df_cleaned['short_debt'] = balance_sheet_df_cleaned['short_debt'].replace([0], pd.NA)
+
+
+            # Calculate Current Ratio
+            current_ratio_calculated = pd.Series(dtype='float64') # Initialize as empty Series
+            if can_calc_current and not balance_sheet_df_cleaned['short_debt'].isna().all(): # Added check for non-NA short_debt
+                 with pd.option_context('mode.use_inf_as_na', True): # Treat infinity as NA
+                      current_ratio_calculated = (balance_sheet_df_cleaned['short_asset'] / balance_sheet_df_cleaned['short_debt'])
+            elif can_calc_current: # short_debt column exists but is all NA/0
+                st.warning(f"Không đủ dữ liệu ({selected_symbol}) để tính Tỷ lệ Thanh toán Hiện hành ('short_debt' toàn NaN/0).")
+            elif required_cols_current[0] in balance_sheet_df.columns and required_cols_current[1] in balance_sheet_df.columns: # Should not happen based on can_calc_current
+                 pass # Avoid duplicate warning if columns exist but are all NA/0
+            else: # Columns are missing
+                 st.warning(f"Thiếu cột cần thiết ({selected_symbol}) để tính Tỷ lệ Thanh toán Hiện hành (Thiếu 'short_asset' hoặc 'short_debt').")
+
+
+            # Calculate Quick Ratio
+            quick_ratio_calculated = pd.Series(dtype='float64') # Initialize as empty Series
+            if can_calc_quick and not balance_sheet_df_cleaned['short_debt'].isna().all(): # Added check for non-NA short_debt
+                 with pd.option_context('mode.use_inf_as_na', True): # Treat infinity as NA
+                      quick_ratio_calculated = ((balance_sheet_df_cleaned['cash'] + balance_sheet_df_cleaned['short_invest'] + balance_sheet_df_cleaned['short_receivable']) / balance_sheet_df_cleaned['short_debt'])
+            elif can_calc_quick: # short_debt column exists but is all NA/0
+                st.warning(f"Không đủ dữ liệu ({selected_symbol}) để tính Tỷ lệ Thanh toán Nhanh ('short_debt' toàn NaN/0).")
+            elif all(col in balance_sheet_df.columns for col in required_cols_quick): # Should not happen based on can_calc_quick
+                 pass # Avoid duplicate warning if columns exist but are all NA/0
+            else: # Columns are missing
+                st.warning(f"Thiếu cột cần thiết ({selected_symbol}) để tính Tỷ lệ Thanh toán Nhanh.")
+
+
+            # Combine calculated ratios into liquidity_df, ensuring index alignment
+            # Use concat to combine, handling potential empty series and aligning by index
+            all_ratios_series = [s for s in [current_ratio_calculated.rename('current_ratio'), quick_ratio_calculated.rename('quick_ratio')] if not s.empty]
+            if all_ratios_series:
+                 liquidity_df = pd.concat(all_ratios_series, axis=1)
+                 # Ensure index is string type for plotting, only if liquidity_df is not empty
+                 if not liquidity_df.empty:
+                      liquidity_df.index = liquidity_df.index.astype(str)
+            else:
+                 # If no ratios could be calculated but balance sheet data exists, create an empty df with matching index
+                 if not balance_sheet_df.empty:
+                     liquidity_df = pd.DataFrame(index=balance_sheet_df.index.astype(str))
+                 else:
+                     liquidity_df = pd.DataFrame() # Truly empty if no balance sheet data
+
         else:
-            st.warning(f"Không đủ dữ liệu ({selected_symbol}) để tính Tỷ lệ Thanh toán Hiện hành (Thiếu 'short_asset' hoặc 'short_debt', hoặc 'short_debt' toàn NaN/0).")
-
-
-        # Calculate Quick Ratio
-        quick_ratio_calculated = pd.Series(dtype='float64') # Initialize as empty Series
-        if all(col in balance_sheet_df_cleaned.columns for col in ['cash', 'short_invest', 'short_receivable', 'short_debt']) and not balance_sheet_df_cleaned['short_debt'].isna().all() and (balance_sheet_df_cleaned['short_debt'] != 0).any(): # Added check for non-zero short_debt
-             quick_ratio_calculated = ((balance_sheet_df_cleaned['cash'] + balance_sheet_df_cleaned['short_invest'] + balance_sheet_df_cleaned['short_receivable']) / balance_sheet_df_cleaned['short_debt']).replace([float('inf'), -float('inf')], pd.NA)
-        else:
-             st.warning(f"Không đủ dữ liệu ({selected_symbol}) để tính Tỷ lệ Thanh toán Nhanh (Thiếu một trong các cột cần thiết, hoặc 'short_debt' toàn NaN/0).")
-
-        # Combine calculated ratios into liquidity_df, ensuring index alignment
-        # Use concat to combine, handling potential empty series
-        if not current_ratio_calculated.empty or not quick_ratio_calculated.empty:
-            liquidity_df = pd.concat([current_ratio_calculated.rename('current_ratio'), quick_ratio_calculated.rename('quick_ratio')], axis=1)
-            # Ensure index is string type for plotting
-            if not liquidity_df.empty:
-                liquidity_df.index = liquidity_df.index.astype(str)
-        else:
-             liquidity_df = pd.DataFrame(index=balance_sheet_df.index.astype(str)) # Ensure index matches original if needed
+             st.warning(f"Thiếu cột cần thiết ({selected_symbol}) để tính Tỷ lệ Thanh khoản.")
 
     # Replace infinite values with NaN after calculation
     liquidity_df.replace([float('inf'), -float('inf')], pd.NA, inplace=True)
@@ -423,31 +510,46 @@ if finance_data_dict and any(not df.empty for df in finance_data_dict.values()):
     working_capital_df = pd.DataFrame()
     if not balance_sheet_df.empty and 'short_asset' in balance_sheet_df.columns and 'short_debt' in balance_sheet_df.columns:
         working_capital_df['working_capital'] = balance_sheet_df['short_asset'] - balance_sheet_df['short_debt']
-        working_capital_df.index = balance_sheet_df.index.astype(str)
-    else:
-        st.warning(f"Không đủ dữ liệu ({selected_symbol}) để tính Vốn lưu động (Thiếu 'short_asset' hoặc 'short_debt').")
+        working_capital_df.index = balance_sheet_df.index.astype(str) # Corrected index assignment
+    elif not balance_sheet_df.empty: # Check if balance sheet is not empty but columns are missing
+        st.warning(f"Thiếu cột cần thiết ({selected_symbol}) để tính Vốn lưu động (Thiếu 'short_asset' hoặc 'short_debt').")
+
 
     # Calculate Free Cash Flow
     free_cash_flow_df = pd.DataFrame()
     if not cash_flow_df.empty and 'from_sale' in cash_flow_df.columns and 'invest_cost' in cash_flow_df.columns:
         free_cash_flow_df['free_cash_flow'] = cash_flow_df['from_sale'] + cash_flow_df['invest_cost'] # invest_cost is typically negative
         free_cash_flow_df.index = cash_flow_df.index.astype(str)
-    else:
-        st.warning(f"Không đủ dữ liệu ({selected_symbol}) để tính Dòng tiền tự do (Thiếu 'from_sale' hoặc 'invest_cost').")
+    elif not cash_flow_df.empty: # Check if cash flow is not empty but columns are missing
+         st.warning(f"Thiếu cột cần thiết ({selected_symbol}) để tính Dòng tiền tự do (Thiếu 'from_sale' hoặc 'invest_cost').")
+
 
 
     # Leverage Ratio (Debt/Equity)
-    leverage_df = ratios_df[['debt_on_equity']].copy() if 'debt_on_equity' in ratios_df.columns else pd.DataFrame()
-    leverage_df.index = leverage_df.index.astype(str)
+    leverage_df = pd.DataFrame()
+    if not ratios_df.empty and 'debt_on_equity' in ratios_df.columns:
+        leverage_df = ratios_df[['debt_on_equity']].copy()
+        leverage_df.index = leverage_df.index.astype(str)
+    elif not ratios_df.empty: # Check if ratios is not empty but column is missing
+         st.warning(f"Thiếu cột cần thiết ({selected_symbol}) để tính Tỷ lệ Đòn bẩy Tài chính (Thiếu 'debt_on_equity').")
 
 
     # P/E Ratio
-    pe_ratio_df = ratios_df[['price_to_earning']].copy() if 'price_to_earning' in ratios_df.columns else pd.DataFrame()
-    pe_ratio_df.index = pe_ratio_df.index.astype(str)
+    pe_ratio_df = pd.DataFrame()
+    if not ratios_df.empty and 'price_to_earning' in ratios_df.columns:
+        pe_ratio_df = ratios_df[['price_to_earning']].copy()
+        pe_ratio_df.index = pe_ratio_df.index.astype(str)
+    elif not ratios_df.empty: # Check if ratios is not empty but column is missing
+         st.warning(f"Thiếu cột cần thiết ({selected_symbol}) để tính Chỉ số P/E (Thiếu 'price_to_earning').")
+
 
     # P/B Ratio
-    pb_ratio_df = ratios_df[['price_to_book']].copy() if 'price_to_book' in ratios_df.columns else pd.DataFrame()
-    pb_ratio_df.index = pb_ratio_df.index.astype(str)
+    pb_ratio_df = pd.DataFrame()
+    if not ratios_df.empty and 'price_to_book' in ratios_df.columns:
+        pb_ratio_df = ratios_df[['price_to_book']].copy()
+        pb_ratio_df.index = pb_ratio_df.index.astype(str)
+    elif not ratios_df.empty: # Check if ratios is not empty but column is missing
+         st.warning(f"Thiếu cột cần thiết ({selected_symbol}) để tính Chỉ số P/B (Thiếu 'price_to_book').")
 
 
     # Create the grid charts *inside* the data check block
